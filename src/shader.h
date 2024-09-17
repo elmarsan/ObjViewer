@@ -1,4 +1,5 @@
-#pragma once
+#ifndef H_SHADER
+#define H_SHADER
 
 #include <glad/glad.h>
 
@@ -142,3 +143,5 @@ private:
         }
     }
 };
+
+#endif

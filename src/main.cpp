@@ -6,68 +6,96 @@
 #include "math.h"
 #include "shader.h"
 #include "types.h"
+#include "wavefront.h"
+#include "camera.h"
 
-const int srcWidth = 800;
-const int srcHeight = 600;
+const int screenWidth = 800;
+const int screenHeight = 600;
 
-void framebuffer_size_callback(GLFWwindow* window, int width, int height);
+// Camera globals
+Camera camera{ vec3{0, 1.0f, 5.0f} };
 
-int main()
+bool firstMouse = true;
+float lastX = 800.0f / 2.0;
+float lastY = 600.0 / 2.0;
+
+// Timing globals
+float deltaTime;
+float lastFrame;
+
+// GLFW callbacks and input handling
+void framebufferSizeCallback(GLFWwindow* window, int width, int height);
+void scrollCallback(GLFWwindow* window, double xoffset, double yoffset);
+void mouseCallback(GLFWwindow* window, double xpos, double ypos);
+void handleInput(GLFWwindow* window);
+
+int main(int argc, char* argv[])
 {
+
+	if (argc != 2 || argv[1] == "")
+	{
+		std::cerr << "Error: Missing wavefront file" << std::endl;
+		return 1;
+	}	
+
 	glfwInit();
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-	auto* window = glfwCreateWindow(srcWidth, srcHeight, "Bio3D OpenGL", nullptr, nullptr);
+	auto* window = glfwCreateWindow(screenWidth, screenHeight, "Wavefront viewer", nullptr, nullptr);
 	assert(window != nullptr && "Failed to create GLFW Window");
 	glfwMakeContextCurrent(window);
-	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
+	glfwSetScrollCallback(window, scrollCallback);
+	glfwSetCursorPosCallback(window, mouseCallback);
+
 	assert(gladLoadGLLoader((GLADloadproc)glfwGetProcAddress) && "Failed to initialize GLAD");
 
-	float vertices[] = {
-		0.5f,  0.5f,  0.0f,  // top right
-		0.5f,  -0.5f, 0.0f,  // bottom right
-		-0.5f, -0.5f, 0.0f,  // bottom left
-		-0.5f, 0.5f,  0.0f,  // top left
-	};
+	// const std::string filename = "cow.obj";	
+	std::ifstream fstream(argv[1]);
+	if (!fstream.is_open())
+	{
+		std::cerr << "Error: Could not open file " << argv[1] << std::endl;
+		return 1;
+	}
 
-	u32 indices[] = {
-		0, 1, 3,  // first Triangle
-		1, 2, 3   // second Triangle
-	};
+	if (fstream.bad())
+	{
+		std::cerr << "Error: I/O error while reading file " << argv[1] << std::endl;
+	}
+
+	Wavefront obj;
+	obj.load(fstream);
+	fstream.close();
+
+	glEnable(GL_DEPTH_TEST);
+	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
 	Shader shader{ "mvp.vs", "color.fs" };
 
-	u32 VAO, EBO, VBO;
-	glGenVertexArrays(1, &VAO);
-	glGenBuffers(1, &VBO);
-	glGenBuffers(1, &EBO);
-
-	glBindVertexArray(VAO);
-
-	glBindBuffer(GL_ARRAY_BUFFER, VBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), &vertices, GL_STATIC_DRAW);
-
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), &indices, GL_STATIC_DRAW);
-
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-	glEnableVertexAttribArray(0);
-
 	while (!glfwWindowShouldClose(window))
 	{
+		float currentFrame = static_cast<float>(glfwGetTime());
+		deltaTime = currentFrame - lastFrame;
+		lastFrame = currentFrame;
+
+		handleInput(window);
+
 		glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		mat4 view = camera.viewMatrix();
+		mat4 projection = perspective(radians(camera.Zoom), float(screenWidth) / float(screenHeight), 0.1f, 100.0f);
+		mat4 model{ 1.0f };
 
 		shader.use();
-		shader.setVec3("Color", vec3{ 0, 220, 30 });
-		shader.setMat4("model", mat4{ 1.0f });
-		shader.setMat4("view", mat4{ 1.0f });
-		shader.setMat4("projection", mat4{ 1.0f });
+		shader.setVec3("Color", vec3{ 1 });
+		shader.setMat4("model", model);
+		shader.setMat4("view", view);
+		shader.setMat4("projection", projection);
 
-		glBindVertexArray(VAO);
-		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+		obj.render();
 
 		glfwSwapBuffers(window);
 		glfwPollEvents();
@@ -77,7 +105,61 @@ int main()
 	return 0;
 }
 
-void framebuffer_size_callback(GLFWwindow* window, int width, int height)
+void framebufferSizeCallback(GLFWwindow* window, int width, int height)
 {
 	glViewport(0, 0, width, height);
+}
+
+void scrollCallback(GLFWwindow* window, double xoffset, double yoffset)
+{
+	camera.setZoom(static_cast<float>(yoffset));
+}
+
+void handleInput(GLFWwindow* window)
+{
+	if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+	{
+		glfwSetWindowShouldClose(window, true);
+	}
+
+	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+	{
+		camera.move(FORWARD, deltaTime);
+	}
+	if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+	{
+		camera.move(BACKWARD, deltaTime);
+	}
+	if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+	{
+		camera.move(LEFT, deltaTime);
+	}
+	if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+	{
+		camera.move(RIGHT, deltaTime);
+	}
+}
+
+void mouseCallback(GLFWwindow* window, double xposIn, double yposIn)
+{
+	float xpos = static_cast<float>(xposIn);
+	float ypos = static_cast<float>(yposIn);
+
+	if (firstMouse)
+	{
+		lastX = xpos;
+		lastY = ypos;
+		firstMouse = false;
+	}
+
+	float xoffset = xpos - lastX;
+	float yoffset = lastY - ypos;
+	lastX = xpos;
+	lastY = ypos;
+
+	float sensitivity = 0.07f;
+	xoffset *= sensitivity;
+	yoffset *= sensitivity;
+
+	camera.setEulerAngles(xoffset, yoffset);
 }
