@@ -43,7 +43,8 @@ void Wavefront::load(std::istream& stream)
 			{
 				vertices.emplace_back(std::stof(data[1]), std::stof(data[2]), std::stof(data[3]));
 			}
-			// 
+			// Indices
+			// TODO: Parse complex indices
 			else if (data[0] == "f")
 			{
 				indices.emplace_back(stoi(data[1]));
