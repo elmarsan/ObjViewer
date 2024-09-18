@@ -51,9 +51,8 @@ int main(int argc, char* argv[])
 	glfwSetCursorPosCallback(window, mouseCallback);
 
 	assert(gladLoadGLLoader((GLADloadproc)glfwGetProcAddress) && "Failed to initialize GLAD");
-
-	// const std::string filename = "cow.obj";	
-	std::ifstream fstream(argv[1]);
+	
+	std::ifstream fstream(argv[1]);	
 	if (!fstream.is_open())
 	{
 		std::cerr << "Error: Could not open file " << argv[1] << std::endl;

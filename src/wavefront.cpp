@@ -2,8 +2,8 @@
 
 #include <string>
 #include <sstream>
-#include <array>
 #include <vector>
+#include <regex>
 
 #include "wavefront.h"
 #include "math.h"
@@ -13,66 +13,61 @@ void Wavefront::load(std::istream& stream)
 	std::vector<vec3> vertices;
 	std::vector<vec3> normals;
 	std::vector<u32> indices;
+	std::vector<vec2> textures;
 
 	std::string line;
-	std::array<float, 3> components;
 
 	while (std::getline(stream, line, '\n'))
 	{
-		std::stringstream strStream(line);
-		std::string data;
-		std::string dataType;
-		int i = 0;
+		const std::regex wordsRegex("[^\\s]+");
+		const auto itBegin = std::sregex_iterator(line.begin(), line.end(), wordsRegex);
+		const auto itEnd = std::sregex_iterator();
 
-		while (std::getline(strStream, data, ' '))
+		std::vector<std::string> data;
+
+		for (std::sregex_iterator i = itBegin; i != itEnd; ++i)
 		{
-			if (i == 0)
+			std::smatch match = *i;
+			data.push_back(match.str());
+		}
+
+		try
+		{
+			// Comment or empty line
+			if (data.empty() || data[0].empty() || data[0] == "#")
 			{
-				dataType = data;
-
-				// Comment or empty line, skip it
-				if (dataType == "#" || data.empty())
-				{
-					break;
-				}
-
-				i++;
 				continue;
 			}
-
-			try
+			// Vertex
+			else if (data[0] == "v")
 			{
-				components[i - 1] = std::stof(data);
-				i++;
+				vertices.emplace_back(std::stof(data[1]), std::stof(data[2]), std::stof(data[3]));
 			}
-			catch (std::invalid_argument const& ex)
+			// 
+			else if (data[0] == "f")
 			{
-				std::cout << "Invalid data: " << ex.what() << std::endl;
+				indices.emplace_back(stoi(data[1]));
+				indices.emplace_back(stoi(data[2]));
+				indices.emplace_back(stoi(data[3]));
+			}
+			// Normal
+			else if (data[0] == "vn")
+			{
+				normals.emplace_back(std::stof(data[1]), std::stof(data[2]), std::stof(data[3]));
+			}
+			// Texture
+			else if (data[0] == "vt")
+			{
+				textures.emplace_back(std::stof(data[1]), std::stof(data[2]));
+			}
+			else
+			{
+				std::cout << "Unsupported component: " << line << std::endl;
 			}
 		}
-
-		// Comment or empty line, skip it
-		if (dataType == "#" || data.empty())
+		catch (std::invalid_argument const& ex)
 		{
-			continue;
-		}
-		else if (dataType == "v")
-		{
-			vertices.emplace_back(components[0], components[1], components[2]);
-		}
-		else if (dataType == "f")
-		{
-			indices.emplace_back(static_cast<u32>(components[0]));
-			indices.emplace_back(static_cast<u32>(components[1]));
-			indices.emplace_back(static_cast<u32>(components[2]));
-		}
-		else if (dataType == "vn")
-		{
-			normals.emplace_back(components[0], components[1], components[2]);
-		}
-		else
-		{
-			std::cout << "Unknown component type: " << dataType << std::endl;
+			std::cout << "Invalid data: " << line << std::endl;
 		}
 	}
 
